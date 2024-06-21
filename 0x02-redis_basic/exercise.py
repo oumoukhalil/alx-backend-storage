@@ -4,7 +4,50 @@ import redis
 from typing import Optional, Callable, Union
 from functools import wraps
 
+def count_calls(method: Callable) -> Callable:
+    """count number time of calling cache method"""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        key = method.__qualname__
+        self._redis.incr(key)
+        return method(self, *args, **kwargs)
 
+    return wrapper
+
+
+def call_history(method: Callable) -> Callable:
+    """ call history"""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        inputs = f"{method.__qualname__}:input"
+        outputs = f"{method.__qualname__}:output"
+        self._redis.rpush(inputs, str(args))
+        data = method(self, *args, **kwargs)
+        self._redis.rpush(outputs, str(data))
+        return data
+
+    return wrapper
+
+
+def replay(method: Callable) -> None:
+    """function to display the history of calls of a particular function.
+    Args:
+        method: the function to display its history
+    Returns:
+         None
+    """
+    Cache = redis.Redis()
+    name = method.__qualname__
+    calls = Cache.get(name).decode("utf-8")
+    input_key = f"{name}:input"
+    output_key = f"{name}:output"
+    inputs = Cache.lrange(input_key, 0, -1)
+    outputs = Cache.lrange(output_key, 0, -1)
+    print(f"{name} was called {calls} times:")
+
+    for i, o in zip(inputs, outputs):
+        print(f"{name}(*{i.decode('utf-8')}) -> {o.decode('utf-8')}")
 class Cache :
     """class cach to to store cache"""
     def __init__(self):
@@ -43,3 +86,4 @@ class Cache :
             data = 0
 
         return data
+
